@@ -1,0 +1,57 @@
+---
+  - name: Ensure this role runs only for new installations
+    debug:
+      msg: "Running the Docker installation role."
+    when: new_installation | default(false)
+
+  - name: Check if Docker is installed
+    shell: docker --version
+    register: docker_check
+    ignore_errors: true
+    when: new_installation | default(false)
+  
+  - name: Uninstall Docker and related packages if installed
+    apt:
+      name:
+        - docker.io
+        - docker-doc
+        - docker-compose
+        - docker-compose-v2
+        - podman-docker
+        - containerd
+        - runc
+      state: absent
+    when: new_installation | default(false) and docker_check.rc == 0
+  
+  - name: Download Docker installation script
+    get_url:
+      url: https://get.docker.com
+      dest: /tmp/get-docker.sh
+      mode: '0755'
+  
+  - name: Verify the Docker installation script
+    shell: sha256sum /tmp/get-docker.sh
+    register: checksum_result
+    ignore_errors: true
+    when: new_installation | default(false) and verify_checksum | default(false)
+  
+  - name: Fail if checksum verification fails
+    fail:
+      msg: "The Docker installation script failed checksum verification!"
+    when: new_installation | default(false) and verify_checksum | default(false) and checksum_result.stdout != expected_checksum
+  
+  - name: Execute the Docker installation script
+    shell: |
+      bash /tmp/get-docker.sh # --version
+      sudo usermod -aG docker $(whoami)
+      exit
+    args:
+      executable: /bin/bash
+    when: new_installation | default(false) and docker_check.rc != 0
+  
+  - name: Remove the installation script
+    file:
+      path: /tmp/get-docker.sh
+      state: absent
+    when: new_installation | default(false)
+  
